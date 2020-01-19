@@ -37,7 +37,7 @@ func main() {
 				// Real Dial happens here
 				c, err := cluster.DialContext(ctx, network, addr)
 				if err == nil {
-					exnet.TraceConn(c, os.Stdout, nil)
+					_ = exnet.TraceConn(c, os.Stdout, nil)
 				}
 				return c, err
 			},

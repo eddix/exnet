@@ -76,7 +76,11 @@ func (c *Cluster) DialContext(ctx context.Context, _, _ string) (net.Conn, error
 		}
 	}
 	// SetDeadline
-	conn.SetDeadline(time.Now().Add(c.DialTimeout).Add(c.WriteTimeout))
+	err = conn.SetDeadline(time.Now().Add(c.DialTimeout).Add(c.WriteTimeout))
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	return conn, nil
 }
 

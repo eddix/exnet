@@ -62,7 +62,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 }
 
 // Close underlying listener
-func (l *Listener) Close() error { return l.Close() }
+func (l *Listener) Close() error { return l._l.Close() }
 
 // Addr return underlying addr
-func (l *Listener) Addr() net.Addr { return l.Addr() }
+func (l *Listener) Addr() net.Addr { return l._l.Addr() }

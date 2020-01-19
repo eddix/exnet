@@ -16,15 +16,14 @@ func main() {
 		panic(err)
 	}
 	l.SetAcceptCallback(func(conn net.Conn) error {
-		exnet.TraceConn(conn, os.Stderr, nil)
-		conn.SetDeadline(time.Now().Add(time.Second))
-		conn.SetReadDeadline(time.Now().Add(time.Second))
-		conn.SetWriteDeadline(time.Now().Add(time.Second))
-		exnet.Freeze(conn)
+		_ = exnet.TraceConn(conn, os.Stderr, nil)
+		_ = conn.SetDeadline(time.Now().Add(time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+		_ = exnet.Freeze(conn)
 		return nil
 	})
-	var f http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+	panic(http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "hello world")
-	}
-	http.Serve(l, f)
+	})))
 }
