@@ -1,6 +1,7 @@
 package exnet
 
 import (
+	"errors"
 	"net"
 	"time"
 )
@@ -10,15 +11,11 @@ type Conn struct {
 	// underlying net.Conn
 	_conn net.Conn
 
-	// timeout and deadline for read/write
-	_readTimeout   time.Duration
-	_readDeadline  time.Time
-	_writeTimeout  time.Duration
-	_writeDeadline time.Time
-	_freeze        bool
+	// whether Conn is freezing
+	freeze bool
 
 	// trace handlers
-	_tracer interface{}
+	tracer interface{}
 }
 
 // Conn is an implementation of interface net.Conn
@@ -35,7 +32,7 @@ func (c *Conn) Underlying() net.Conn {
 func (c *Conn) Read(b []byte) (n int, err error) {
 	n, err = c._conn.Read(b)
 	// trace
-	if tracer, ok := c._tracer.(ReadTracer); ok {
+	if tracer, ok := c.tracer.(ReadTracer); ok {
 		tracer.TraceRead(c, b, err)
 	}
 
@@ -48,7 +45,7 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 func (c *Conn) Write(b []byte) (n int, err error) {
 	n, err = c._conn.Write(b)
 	// trace
-	if tracer, ok := c._tracer.(WriteTracer); ok {
+	if tracer, ok := c.tracer.(WriteTracer); ok {
 		tracer.TraceWrite(c, b, err)
 	}
 
@@ -65,7 +62,7 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 func (c *Conn) Close() error {
 	err := c._conn.Close()
 	// trace
-	if tracer, ok := c._tracer.(CloseTracer); ok {
+	if tracer, ok := c.tracer.(CloseTracer); ok {
 		tracer.TraceClose(c, err)
 	}
 	return err
@@ -104,11 +101,14 @@ func (c *Conn) RemoteAddr() net.Addr {
 // failure on I/O can be detected using
 // errors.Is(err, syscall.ETIMEDOUT).
 func (c *Conn) SetDeadline(t time.Time) error {
-	if c._freeze {
+	if c.freeze {
+		if tracer, ok := c.tracer.(SetDeadlineTracer); ok {
+			tracer.TraceSetDeadline(c, t, errors.New("Try to SetDeadline on a freezing conn"))
+		}
 		return nil
 	}
 	err := c._conn.SetDeadline(t)
-	if tracer, ok := c._tracer.(SetDeadlineTracer); ok {
+	if tracer, ok := c.tracer.(SetDeadlineTracer); ok {
 		tracer.TraceSetDeadline(c, t, err)
 	}
 	return err
@@ -118,11 +118,14 @@ func (c *Conn) SetDeadline(t time.Time) error {
 // and any currently-blocked Read call.
 // A zero value for t means Read will not time out.
 func (c *Conn) SetReadDeadline(t time.Time) error {
-	if c._freeze {
+	if c.freeze {
+		if tracer, ok := c.tracer.(SetReadDeadlineTracer); ok {
+			tracer.TraceSetReadDeadline(c, t, errors.New("Try to SetReadDeadline on a freezing conn"))
+		}
 		return nil
 	}
 	err := c._conn.SetReadDeadline(t)
-	if tracer, ok := c._tracer.(SetReadDeadlineTracer); ok {
+	if tracer, ok := c.tracer.(SetReadDeadlineTracer); ok {
 		tracer.TraceSetReadDeadline(c, t, err)
 	}
 	return err
@@ -134,11 +137,14 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 // some of the data was successfully written.
 // A zero value for t means Write will not time out.
 func (c *Conn) SetWriteDeadline(t time.Time) error {
-	if c._freeze {
+	if c.freeze {
+		if tracer, ok := c.tracer.(SetWriteDeadlineTracer); ok {
+			tracer.TraceSetWriteDeadline(c, t, errors.New("Try to SetReadDeadline on a freezing conn"))
+		}
 		return nil
 	}
 	err := c._conn.SetWriteDeadline(t)
-	if tracer, ok := c._tracer.(SetWriteDeadlineTracer); ok {
+	if tracer, ok := c.tracer.(SetWriteDeadlineTracer); ok {
 		tracer.TraceSetWriteDeadline(c, t, err)
 	}
 	return err
@@ -165,7 +171,7 @@ func Unfreeze(conn net.Conn) error {
 
 func changeFreeze(conn net.Conn, freeze bool) error {
 	if c, ok := conn.(*Conn); ok {
-		c._freeze = freeze
+		c.freeze = freeze
 		return nil
 	}
 	return ErrNotExnetConn

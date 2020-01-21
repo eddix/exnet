@@ -220,7 +220,7 @@ func TraceConn(conn net.Conn, tracer interface{}) error {
 	if tracer == nil {
 		tracer = &ConnTracer{}
 	}
-	c._tracer = tracer
+	c.tracer = tracer
 
 	return nil
 }
@@ -231,7 +231,7 @@ func StopTraceConn(conn net.Conn) error {
 	if !ok {
 		return ErrNotExnetConn
 	}
-	c._tracer = nil
+	c.tracer = nil
 
 	return nil
 }

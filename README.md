@@ -58,42 +58,12 @@ conn.Close()
 
 ### 在HTTP请求中使用
 
+参考 example/http 示例。
 
 ### 在MySQL库中使用
 
-```go
-mysql.RegisterDialer("exnet", func(addr string) (net.Conn, error) {
-    return cluster.Dial("", "")
-})
-
-db, err := sql.Open("mysql", "user:password@exnet(mydb)/dbname")
-```
+参考 example/mysql 示例。
 
 ### 在Redis库中使用
 
-#### 使用redigo/redis库
-
-```go
-import "github.com/gomodule/redigo/redis"
-
-conn, _ := cluster.Dial("", "")
-redisConn := redis.NewConn(conn, time.Second, time.Second)
-_, err := redisConn.Do("PING")
-```
-
-#### 使用go-redis/redis库
-
-```go
-import "github.com/go-redis/redis"
-
-client := redis.NewClient(&redis.Options{
-    Addr: "myredis",
-    DB: 0,
-    Dialer: cluster.DialContext,
-})
-
-err := client.Set("key", "value", 0).Err()
-if err != nil {
-    log.Printf("client.Set error: %s\n", err.Error())
-}
-```
+参考 example/redis 示例。
