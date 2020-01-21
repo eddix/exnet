@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/eddix/exnet"
@@ -16,7 +15,7 @@ func main() {
 		panic(err)
 	}
 	l.SetAcceptCallback(func(conn net.Conn) error {
-		_ = exnet.TraceConn(conn, os.Stderr, nil)
+		_ = exnet.TraceConn(conn, nil)
 		_ = conn.SetDeadline(time.Now().Add(time.Second))
 		_ = conn.SetReadDeadline(time.Now().Add(time.Second))
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))

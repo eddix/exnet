@@ -18,12 +18,7 @@ type Conn struct {
 	_freeze        bool
 
 	// trace handlers
-	_traceRead             func(n int, err error, b []byte)
-	_traceWrite            func(n int, err error, b []byte)
-	_traceClose            func(err error)
-	_traceSetDeadline      func(t time.Time, err error)
-	_traceSetReadDeadline  func(t time.Time, err error)
-	_traceSetWriteDeadline func(t time.Time, err error)
+	_tracer interface{}
 }
 
 // Conn is an implementation of interface net.Conn
@@ -40,8 +35,8 @@ func (c *Conn) Underlying() net.Conn {
 func (c *Conn) Read(b []byte) (n int, err error) {
 	n, err = c._conn.Read(b)
 	// trace
-	if c._traceRead != nil {
-		c._traceRead(n, err, b)
+	if tracer, ok := c._tracer.(ReadTracer); ok {
+		tracer.TraceRead(c, b, err)
 	}
 
 	return n, err
@@ -53,8 +48,8 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 func (c *Conn) Write(b []byte) (n int, err error) {
 	n, err = c._conn.Write(b)
 	// trace
-	if c._traceWrite != nil {
-		c._traceWrite(n, err, b)
+	if tracer, ok := c._tracer.(WriteTracer); ok {
+		tracer.TraceWrite(c, b, err)
 	}
 
 	return n, err
@@ -70,8 +65,8 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 func (c *Conn) Close() error {
 	err := c._conn.Close()
 	// trace
-	if c._traceClose != nil {
-		c._traceClose(err)
+	if tracer, ok := c._tracer.(CloseTracer); ok {
+		tracer.TraceClose(c, err)
 	}
 	return err
 }
@@ -113,8 +108,8 @@ func (c *Conn) SetDeadline(t time.Time) error {
 		return nil
 	}
 	err := c._conn.SetDeadline(t)
-	if c._traceSetDeadline != nil {
-		c._traceSetDeadline(t, err)
+	if tracer, ok := c._tracer.(SetDeadlineTracer); ok {
+		tracer.TraceSetDeadline(c, t, err)
 	}
 	return err
 }
@@ -127,8 +122,8 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 		return nil
 	}
 	err := c._conn.SetReadDeadline(t)
-	if c._traceSetReadDeadline != nil {
-		c._traceSetReadDeadline(t, err)
+	if tracer, ok := c._tracer.(SetReadDeadlineTracer); ok {
+		tracer.TraceSetReadDeadline(c, t, err)
 	}
 	return err
 }
@@ -143,8 +138,8 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 		return nil
 	}
 	err := c._conn.SetWriteDeadline(t)
-	if c._traceSetWriteDeadline != nil {
-		c._traceSetWriteDeadline(t, err)
+	if tracer, ok := c._tracer.(SetWriteDeadlineTracer); ok {
+		tracer.TraceSetWriteDeadline(c, t, err)
 	}
 	return err
 }

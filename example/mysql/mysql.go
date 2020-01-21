@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"log"
 	"net"
-	"os"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -26,7 +25,7 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
-		_ = exnet.TraceConn(conn, os.Stderr, nil)
+		_ = exnet.TraceConn(conn, nil)
 		return conn, nil
 	})
 	db, err := sql.Open("mysql", "root@mydb(localhost:3306)/test?allowNativePasswords=true")

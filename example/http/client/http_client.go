@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/eddix/exnet"
@@ -37,7 +36,7 @@ func main() {
 				// Real Dial happens here
 				c, err := cluster.DialContext(ctx, network, addr)
 				if err == nil {
-					_ = exnet.TraceConn(c, os.Stdout, nil)
+					_ = exnet.TraceConn(c, nil)
 				}
 				return c, err
 			},
