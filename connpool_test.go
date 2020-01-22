@@ -22,9 +22,9 @@ func TestConnPool(t *testing.T) {
 }
 
 func testConnPool(t *testing.T, async bool) {
-	size, connsNum := 7, 100
+	cap, connsNum := 7, 100
 	conf := &exnet.ConnPoolConfig{
-		Size: size,
+		Cap: cap,
 	}
 	var pool exnet.ConnPool
 	if async {
@@ -62,7 +62,7 @@ func testConnPool(t *testing.T, async bool) {
 		Port: 0,
 		Zone: "",
 	}
-	for i := connsNum - size; i < connsNum; i++ {
+	for i := connsNum - cap; i < connsNum; i++ {
 		expectAddr.Port = i
 		conn = pool.Get()
 		assert.Equal(t, expectAddr, conn.LocalAddr())
@@ -82,7 +82,7 @@ func BenchmarkConnPool(b *testing.B) {
 
 func benchmarkConnPool(b *testing.B, async bool) {
 	conf := &exnet.ConnPoolConfig{
-		Size: b.N/2 + 1,
+		Cap: b.N/2 + 1,
 	}
 	var pool exnet.ConnPool
 	if async {
@@ -115,5 +115,5 @@ func benchmarkConnPool(b *testing.B, async bool) {
 		}()
 	}
 	wg.Wait()
-	b.Logf("%s N=%d, got=%d\n", b.Name(), b.N, got)
+	b.Logf("%s got/N = %d/%d\n", b.Name(), got, b.N)
 }

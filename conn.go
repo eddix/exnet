@@ -13,13 +13,26 @@ type Conn struct {
 
 	// whether Conn is freezing
 	freeze bool
-
 	// trace handlers
 	tracer interface{}
+	// closer
+	closer ConnCloser
+	// err
+	err error
+}
+
+// ConnCloser is close delegate
+type ConnCloser interface {
+	Close(net.Conn) error
 }
 
 // Conn is an implementation of interface net.Conn
 var _ net.Conn = &Conn{}
+
+// connWrapper meanings the conn has underlying conn
+type connWrapper interface {
+	Underlying() net.Conn
+}
 
 // Underlying net.Conn
 func (c *Conn) Underlying() net.Conn {
@@ -60,7 +73,12 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 //    b. The number of idle connections doesn't reach limit.
 // Any blocked Read or Write operations will be unblocked and return errors.
 func (c *Conn) Close() error {
-	err := c._conn.Close()
+	var err error
+	if c.closer != nil {
+		err = c.closer.Close(c)
+	} else {
+		err = c._conn.Close()
+	}
 	// trace
 	if tracer, ok := c.tracer.(CloseTracer); ok {
 		tracer.TraceClose(c, err)
@@ -156,6 +174,17 @@ func WithConn(conn net.Conn) net.Conn {
 		return conn
 	}
 	return &Conn{_conn: conn}
+}
+
+// UnwrapConn return the underlying conn
+func UnwrapConn(conn net.Conn) net.Conn {
+	uc, ok := conn, true
+	for ok {
+		if _, ok = uc.(connWrapper); ok {
+			uc = uc.(connWrapper).Underlying()
+		}
+	}
+	return uc
 }
 
 // Freeze changes of deadlines, call SetDeadline, SetReadDeadline, or SetWriteDeadline

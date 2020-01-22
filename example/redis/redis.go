@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
@@ -14,10 +13,11 @@ import (
 )
 
 func main() {
+	// Create an exnet cluster
 	ap := addresspicker.NewRoundRobin(nil)
 	_ = ap.AppendTCPAddress("tcp", "localhost:6377") // wrong address
 	_ = ap.AppendTCPAddress("tcp", "localhost:6378") // wrong address
-	_ = ap.AppendTCPAddress("tcp", "localhost:6379")
+	_ = ap.AppendTCPAddress("tcp", "localhost:6379") // right address
 	cluster := &exnet.Cluster{
 		DialTimeout:   10 * time.Millisecond,
 		ReadTimeout:   100 * time.Millisecond,
@@ -40,12 +40,13 @@ func main() {
 		}
 		log.Printf("Write Redis: (%s)", string(data))
 	}
-	client := redis.NewClient(&redis.Options{
-		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
+	// create client with custom Dialer
+	rdb := redis.NewClient(&redis.Options{
+		Dialer: func() (net.Conn, error) {
 			var conn net.Conn
 			var err error
 			for attempt := 0; attempt < 3; attempt++ {
-				conn, err = cluster.DialContext(ctx, network, addr)
+				conn, err = cluster.Dial("", "")
 				if err == nil {
 					_ = exnet.TraceConn(conn, tracer)
 					break
@@ -53,9 +54,7 @@ func main() {
 			}
 			return conn, err
 		},
-		Password: "",
-		DB:       0,
 	})
-	pong, err := client.Ping().Result()
+	pong, err := rdb.Ping().Result()
 	fmt.Println(pong, err)
 }
