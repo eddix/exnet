@@ -2,6 +2,9 @@ package exnet_test
 
 import (
 	"net"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,12 +13,26 @@ import (
 )
 
 func TestConnPool(t *testing.T) {
-	size := 3
-	pool := exnet.NewConnPool(&exnet.ConnPoolConfig{
-		Size:  3,
-		Async: false,
+	t.Run("Sync Conn Pool", func(t *testing.T) {
+		testConnPool(t, false)
 	})
-	for i := 0; i < 10; i++ {
+	t.Run("Async Conn Pool", func(t *testing.T) {
+		testConnPool(t, true)
+	})
+}
+
+func testConnPool(t *testing.T, async bool) {
+	size, connsNum := 7, 100
+	conf := &exnet.ConnPoolConfig{
+		Size: size,
+	}
+	var pool exnet.ConnPool
+	if async {
+		pool = exnet.NewAsyncConnPool(conf)
+	} else {
+		pool = exnet.NewSyncConnPool(conf)
+	}
+	for i := 0; i < connsNum; i++ {
 		port := i
 		conn := exnet.WithConn(&testConn{
 			localAddr: func() net.Addr {
@@ -27,19 +44,76 @@ func TestConnPool(t *testing.T) {
 			},
 		})
 		pool.Put(conn)
+		var poolStat []string
+		// static inspect pool for SyncConnPool
+		if sp, ok := pool.(*exnet.SyncConnPool); ok {
+			sp.Map(func(conn net.Conn) {
+				if conn != nil {
+					poolStat = append(poolStat, conn.LocalAddr().String())
+				}
+			})
+			t.Logf("PoolStat-%d: %s", i, strings.Join(poolStat, ", "))
+		}
 	}
-	// Should got 7, 8, 9
+	// get
 	var conn net.Conn
 	var expectAddr = &net.TCPAddr{
 		IP:   net.IP{0, 0, 0, 0},
 		Port: 0,
 		Zone: "",
 	}
-	for i := 10 - size; i < 10; i++ {
+	for i := connsNum - size; i < connsNum; i++ {
 		expectAddr.Port = i
 		conn = pool.Get()
 		assert.Equal(t, expectAddr, conn.LocalAddr())
 	}
 	conn = pool.Get()
 	assert.Nil(t, conn)
+}
+
+func BenchmarkConnPool(b *testing.B) {
+	b.Run("SyncPutGet", func(b *testing.B) {
+		benchmarkConnPool(b, false)
+	})
+	b.Run("AsyncPutGet", func(b *testing.B) {
+		benchmarkConnPool(b, true)
+	})
+}
+
+func benchmarkConnPool(b *testing.B, async bool) {
+	conf := &exnet.ConnPoolConfig{
+		Size: b.N/2 + 1,
+	}
+	var pool exnet.ConnPool
+	if async {
+		pool = exnet.NewAsyncConnPool(conf)
+	} else {
+		pool = exnet.NewSyncConnPool(conf)
+	}
+	var wg sync.WaitGroup
+	var got int64
+	for i := 0; i < b.N; i++ {
+		wg.Add(2)
+		go func(port int) {
+			conn := exnet.WithConn(&testConn{
+				localAddr: func() net.Addr {
+					return &net.TCPAddr{
+						IP:   net.IP{0, 0, 0, 0},
+						Port: port,
+					}
+				},
+			})
+			pool.Put(conn)
+			wg.Done()
+		}(i)
+		go func() {
+			conn := pool.Get()
+			if conn != nil {
+				atomic.AddInt64(&got, 1)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	b.Logf("%s N=%d, got=%d\n", b.Name(), b.N, got)
 }

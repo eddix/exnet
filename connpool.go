@@ -5,46 +5,30 @@ import (
 	"sync"
 )
 
-// ConnPool maintain connections in pool
-type ConnPool struct {
+// ConnPool interface definition for connpool
+type ConnPool interface {
+	Put(net.Conn)
+	Get() net.Conn
+}
+
+// ConnPoolConfig config for ConnPool
+type ConnPoolConfig struct {
+	Size int
+}
+
+// SyncConnPool maintain connections in pool,
+// Get and Put manipulation is blocking until done.
+type SyncConnPool struct {
 	pool  []net.Conn
 	ridx  int
 	widx  int
 	rwmtx sync.Mutex
 	size  int
-
-	async bool
-
-	inch  chan net.Conn
-	outch chan net.Conn
-	stop  chan struct{}
-}
-
-type ConnPoolConfig struct {
-	Size  int
-	Async bool
 }
 
 // connWrapper meanings the conn has underlying conn
 type connWrapper interface {
 	Underlying() net.Conn
-}
-
-func NewConnPool(conf *ConnPoolConfig) *ConnPool {
-	if conf == nil {
-		panic("ConnPoolConfig can't be nil")
-	}
-	p := &ConnPool{
-		pool:  make([]net.Conn, conf.Size),
-		size:  conf.Size,
-		async: conf.Async,
-	}
-	if conf.Async {
-		p.inch = make(chan net.Conn, conf.Size/2)
-		p.outch = make(chan net.Conn, conf.Size/2)
-		p.stop = make(chan struct{})
-	}
-	return p
 }
 
 func unwrapConn(conn net.Conn) net.Conn {
@@ -57,74 +41,32 @@ func unwrapConn(conn net.Conn) net.Conn {
 	return uc
 }
 
-func (p *ConnPool) Put(conn net.Conn) {
-	if !p.async {
-		p.in(conn)
-		return
+// NewSyncConnPool create a sync conn pool
+func NewSyncConnPool(conf *ConnPoolConfig) ConnPool {
+	if conf == nil {
+		panic("ConnPoolConfig can't be nil")
 	}
-	select {
-	case p.inch <- conn:
-	default: // ignore if p.inch is blocking
+	p := &SyncConnPool{
+		pool: make([]net.Conn, conf.Size),
+		size: conf.Size,
 	}
+	return p
 }
 
-func (p *ConnPool) Get() net.Conn {
-	if !p.async {
-		return p.out()
-	}
-	select {
-	case ret := <-p.outch:
-		return ret
-	default:
-	}
-	return nil
-}
-
-func (p *ConnPool) Map(f func(net.Conn)) {
-	p.rwmtx.Lock()
-	defer p.rwmtx.Unlock()
-
-	for _, c := range p.pool {
-		f(c)
-	}
-}
-
-func (p *ConnPool) putLoop() {
-	for {
-		select {
-		case <-p.stop:
-			return
-		case conn := <-p.inch:
-			p.in(conn)
-		}
-	}
-}
-
-func (p *ConnPool) getLoop() {
-	for {
-		select {
-		case <-p.stop:
-			return
-		default:
-		}
-		p.outch <- p.out()
-	}
-}
-
-func (p *ConnPool) in(conn net.Conn) {
+func (p *SyncConnPool) Put(conn net.Conn) {
 	p.rwmtx.Lock()
 	defer p.rwmtx.Unlock()
 
 	old := p.pool[p.widx]
 	p.pool[p.widx] = unwrapConn(conn)
-	p.widx = p.grow(p.widx)
 	if old != nil {
-		p.ridx = p.grow(p.ridx)
 		_ = old.Close()
+		p.ridx = p.grow(p.ridx)
 	}
+	p.widx = p.grow(p.widx)
 }
 
-func (p *ConnPool) out() net.Conn {
+func (p *SyncConnPool) Get() net.Conn {
 	p.rwmtx.Lock()
 	defer p.rwmtx.Unlock()
 
@@ -133,17 +75,59 @@ func (p *ConnPool) out() net.Conn {
 	}
 	conn := p.pool[p.ridx]
 	p.pool[p.ridx] = nil
-	p.ridx++
-	if p.ridx == p.size {
-		p.ridx = 0
-	}
+	p.ridx = p.grow(p.ridx)
 	return conn
 }
 
-func (p *ConnPool) grow(n int) int {
-	n++
-	if n < p.size {
-		return n
+func (p *SyncConnPool) Map(f func(net.Conn)) {
+	p.rwmtx.Lock()
+	defer p.rwmtx.Unlock()
+
+	for _, c := range p.pool {
+		f(c)
+	}
+}
+
+func (p *SyncConnPool) grow(n int) int {
+	if n+1 < p.size {
+		return n + 1
 	}
 	return 0
+}
+
+// AsyncConnPool use channel as connection pool
+// Get and Put manipulations are channel in and out
+type AsyncConnPool struct {
+	pool chan net.Conn
+}
+
+func NewAsyncConnPool(conf *ConnPoolConfig) ConnPool {
+	p := &AsyncConnPool{
+		pool: make(chan net.Conn, conf.Size),
+	}
+	return p
+}
+
+func (p *AsyncConnPool) Get() net.Conn {
+	select {
+	case conn := <-p.pool:
+		return conn
+	default:
+		return nil
+	}
+}
+
+func (p *AsyncConnPool) Put(conn net.Conn) {
+	for {
+		done := false
+		select {
+		case p.pool <- conn:
+			done = true
+		default:
+		}
+		if done {
+			break
+		}
+		<-p.pool
+	}
 }
